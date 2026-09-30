@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Task } from "../types";
 import TaskCard from "../components/TaskCard";
@@ -28,10 +28,12 @@ export default function TasksPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [subject, completion, overdueOnly, sortBy]);
 
-  const subjects = useMemo(
-    () => Array.from(new Set(tasks.map((t) => t.subject))).sort(),
-    [tasks]
-  );
+  // Load the full subject list once, so the dropdown doesn't shrink to the
+  // subjects of whatever is currently filtered.
+  const [subjects, setSubjects] = useState<string[]>([]);
+  useEffect(() => {
+    api.listSubjects().then(setSubjects).catch(() => setSubjects([]));
+  }, [tasks.length]);
 
   const handleComplete = async (id: string) => {
     await api.completeTask(id);

@@ -7,33 +7,25 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models import Difficulty, PriorityLevel, Task, User
+from app.models import Task, User
 from app.priority import compute_priority
 from app.schemas import TaskCreate, TaskOut, TaskUpdate
+from app.task_service import (
+    as_utc,
+    deadline_sort_key,
+    is_overdue,
+    priority_sort_key,
+    refresh_priorities,
+    to_out,
+)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
-
-
-def _is_overdue(task: Task, now: datetime | None = None) -> bool:
-    now = now or datetime.now(timezone.utc)
-    deadline = task.deadline if task.deadline.tzinfo else task.deadline.replace(tzinfo=timezone.utc)
-    return (not task.completed) and deadline < now
-
-
-def _to_out(task: Task) -> TaskOut:
-    out = TaskOut.model_validate(task)
-    out.is_overdue = _is_overdue(task)
-    return out
 
 
 def _get_owned_task_or_404(db: Session, task_id: str, user: User) -> Task:
     """FR-21/NFR-05: a task is only ever fetched scoped to its owner, so a
     task belonging to another user is indistinguishable from a nonexistent one."""
-    task = (
-        db.query(Task)
-        .filter(Task.id == task_id, Task.owner_id == user.id)
-        .first()
-    )
+    task = db.query(Task).filter(Task.id == task_id, Task.owner_id == user.id).first()
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
     return task
@@ -59,7 +51,7 @@ def create_task(
     db.add(task)
     db.commit()
     db.refresh(task)
-    return _to_out(task)
+    return to_out(task)
 
 
 @router.get("", response_model=list[TaskOut])
@@ -72,24 +64,30 @@ def list_tasks(
     sort_by: Literal["priority", "deadline"] = Query(default="priority"),
 ):
     query = db.query(Task).filter(Task.owner_id == current_user.id)  # FR-21
-
     if subject:
         query = query.filter(Task.subject == subject)  # FR-15
     if completed is not None:
         query = query.filter(Task.completed == completed)  # FR-15
 
     tasks = query.all()
+    refresh_priorities(db, tasks)
 
     if overdue_only:
-        tasks = [t for t in tasks if _is_overdue(t)]  # FR-18
+        tasks = [t for t in tasks if is_overdue(t)]  # FR-18
 
-    # FR-16 sort, FR-14 tie-break: for priority sort, ties broken by earlier deadline first.
-    if sort_by == "priority":
-        tasks.sort(key=lambda t: (-t.priority_score, t.deadline))
-    else:
-        tasks.sort(key=lambda t: t.deadline)
+    tasks.sort(key=priority_sort_key if sort_by == "priority" else deadline_sort_key)  # FR-16/FR-14
+    return [to_out(t) for t in tasks]
 
-    return [_to_out(t) for t in tasks]
+
+@router.get("/subjects", response_model=list[str])
+def list_subjects(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """All distinct subjects for the current user (feeds the subject filter,
+    independent of whichever filter is currently applied)."""
+    rows = db.query(Task.subject).filter(Task.owner_id == current_user.id).distinct().all()
+    return sorted(r[0] for r in rows)
 
 
 @router.get("/upcoming", response_model=list[TaskOut])
@@ -98,19 +96,17 @@ def upcoming_deadlines(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """FR-17: incomplete tasks due within the next `days` days (overdue tasks included,
-    since they still need attention)."""
-    now = datetime.now(timezone.utc)
-    horizon = now.replace(hour=23, minute=59, second=59) + timedelta(days=days)
-
+    """FR-17: incomplete tasks due within the next `days` days (overdue tasks
+    included, since they still need attention)."""
+    horizon = datetime.now(timezone.utc) + timedelta(days=days)
     tasks = (
         db.query(Task)
         .filter(Task.owner_id == current_user.id, Task.completed.is_(False))
         .all()
     )
-    upcoming = [t for t in tasks if t.deadline <= horizon]
-    upcoming.sort(key=lambda t: t.deadline)
-    return [_to_out(t) for t in upcoming]
+    refresh_priorities(db, tasks)
+    upcoming = sorted([t for t in tasks if as_utc(t.deadline) <= horizon], key=deadline_sort_key)
+    return [to_out(t) for t in upcoming]
 
 
 @router.get("/{task_id}", response_model=TaskOut)
@@ -120,7 +116,32 @@ def get_task(
     current_user: User = Depends(get_current_user),
 ):
     task = _get_owned_task_or_404(db, task_id, current_user)  # FR-09
-    return _to_out(task)
+    refresh_priorities(db, [task])
+    return to_out(task)
+
+
+def apply_task_update(db: Session, task: Task, payload: TaskUpdate) -> Task:
+    """Shared by the student and admin edit endpoints."""
+    data = payload.model_dump(exclude_unset=True)
+    was_completed = task.completed
+    for field, value in data.items():
+        setattr(task, field, value)
+
+    if "completed" in data:
+        if task.completed and not was_completed:
+            task.completed_at = datetime.now(timezone.utc)
+        elif not task.completed:
+            task.completed_at = None
+
+    # FR-13: recalculate priority whenever deadline, difficulty or estimated hours change.
+    if {"deadline", "difficulty", "estimated_hours"} & data.keys():
+        score, level = compute_priority(task.deadline, task.difficulty, task.estimated_hours)
+        task.priority_score = score
+        task.priority_level = level
+
+    db.commit()
+    db.refresh(task)
+    return task
 
 
 @router.patch("/{task_id}", response_model=TaskOut)
@@ -131,20 +152,7 @@ def update_task(
     current_user: User = Depends(get_current_user),
 ):
     task = _get_owned_task_or_404(db, task_id, current_user)  # FR-06
-
-    data = payload.model_dump(exclude_unset=True)
-    for field, value in data.items():
-        setattr(task, field, value)
-
-    # FR-13: recalculate priority whenever deadline, difficulty or estimated hours change.
-    if {"deadline", "difficulty", "estimated_hours"} & data.keys():
-        score, level = compute_priority(task.deadline, task.difficulty, task.estimated_hours)
-        task.priority_score = score
-        task.priority_level = level
-
-    db.commit()
-    db.refresh(task)
-    return _to_out(task)
+    return to_out(apply_task_update(db, task, payload))
 
 
 @router.post("/{task_id}/complete", response_model=TaskOut)
@@ -154,10 +162,12 @@ def complete_task(
     current_user: User = Depends(get_current_user),
 ):
     task = _get_owned_task_or_404(db, task_id, current_user)  # FR-08
-    task.completed = True
+    if not task.completed:
+        task.completed = True
+        task.completed_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(task)
-    return _to_out(task)
+    return to_out(task)
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

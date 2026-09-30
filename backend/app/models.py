@@ -45,6 +45,11 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Admins can see and manage every user's tasks via /admin. Registration
+    # never grants admin; it is set by the seeding step or by another admin.
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Deactivated accounts cannot log in, but their data is kept.
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     tasks: Mapped[list["Task"]] = relationship(
@@ -63,21 +68,17 @@ class Task(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     subject: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    difficulty: Mapped[Difficulty] = mapped_column(
-        SAEnum(Difficulty, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
-        nullable=False,
-    )
+    difficulty: Mapped[Difficulty] = mapped_column(SAEnum(Difficulty), nullable=False)
     estimated_hours: Mapped[float] = mapped_column(Float, nullable=False)
 
     completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Priority is recomputed server-side (FR-11/FR-13) and persisted so it can be
     # queried/sorted/filtered without recalculating on every read.
     priority_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     priority_level: Mapped[PriorityLevel] = mapped_column(
-        SAEnum(PriorityLevel, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
-        nullable=False,
-        default=PriorityLevel.LOW,
+        SAEnum(PriorityLevel), nullable=False, default=PriorityLevel.LOW
     )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

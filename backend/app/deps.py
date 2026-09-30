@@ -29,4 +29,19 @@ def get_current_user(
     user = db.get(User, user_id)
     if user is None:
         raise credentials_exception
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been deactivated. Contact an administrator.",
+        )
     return user
+
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Gate for every /admin route: students get 403, not a silent empty result."""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator access required.",
+        )
+    return current_user

@@ -16,8 +16,8 @@ export default function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await login(email, password);
-      navigate("/");
+      const user = await login(email, password);
+      navigate(user.is_admin ? "/admin" : "/");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not log in. Please try again.");
     } finally {

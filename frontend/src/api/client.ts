@@ -1,4 +1,18 @@
-import type { AuthResponse, Dashboard, Task, TaskInput, User } from "../types";
+import type {
+  AdminStats,
+  AdminTask,
+  AdminTaskPage,
+  AdminUser,
+  AdminUserDetail,
+  AdminUserPatch,
+  AuthResponse,
+  Dashboard,
+  PriorityLevel,
+  Task,
+  TaskInput,
+  TaskPatch,
+  User,
+} from "../types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -83,8 +97,10 @@ export const api = {
   createTask: (input: TaskInput) =>
     request<Task>("/tasks", { method: "POST", body: JSON.stringify(input) }),
 
-  updateTask: (id: string, input: Partial<TaskInput> & { completed?: boolean }) =>
+  updateTask: (id: string, input: TaskPatch) =>
     request<Task>(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+
+  listSubjects: () => request<string[]>("/tasks/subjects"),
 
   completeTask: (id: string) => request<Task>(`/tasks/${id}/complete`, { method: "POST" }),
 
@@ -93,4 +109,58 @@ export const api = {
   upcoming: (days = 7) => request<Task[]>(`/tasks/upcoming?days=${days}`),
 
   dashboard: () => request<Dashboard>("/dashboard"),
+};
+
+function qs(params: Record<string, string | number | boolean | undefined | null>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") continue;
+    search.set(key, String(value));
+  }
+  const s = search.toString();
+  return s ? `?${s}` : "";
+}
+
+export interface AdminUserQuery {
+  search?: string;
+  role?: "all" | "admin" | "student";
+  status?: "all" | "active" | "inactive";
+  sort_by?: "name" | "created" | "open" | "overdue";
+}
+
+export interface AdminTaskQuery {
+  search?: string;
+  owner_id?: string;
+  subject?: string;
+  completed?: boolean;
+  priority_level?: PriorityLevel;
+  overdue_only?: boolean;
+  sort_by?: "priority" | "deadline" | "created";
+  limit?: number;
+  offset?: number;
+}
+
+export const adminApi = {
+  stats: () => request<AdminStats>("/admin/stats"),
+
+  listUsers: (q: AdminUserQuery = {}) => request<AdminUser[]>(`/admin/users${qs({ ...q })}`),
+
+  getUser: (id: string) => request<AdminUserDetail>(`/admin/users/${id}`),
+
+  createUser: (input: { name: string; email: string; password: string; is_admin: boolean }) =>
+    request<AdminUser>("/admin/users", { method: "POST", body: JSON.stringify(input) }),
+
+  updateUser: (id: string, patch: AdminUserPatch) =>
+    request<AdminUser>(`/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+
+  deleteUser: (id: string) => request<void>(`/admin/users/${id}`, { method: "DELETE" }),
+
+  listTasks: (q: AdminTaskQuery = {}) => request<AdminTaskPage>(`/admin/tasks${qs({ ...q })}`),
+
+  listSubjects: () => request<string[]>("/admin/subjects"),
+
+  updateTask: (id: string, patch: TaskPatch) =>
+    request<AdminTask>(`/admin/tasks/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+
+  deleteTask: (id: string) => request<void>(`/admin/tasks/${id}`, { method: "DELETE" }),
 };

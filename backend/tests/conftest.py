@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -17,9 +18,13 @@ os.environ["SECRET_KEY"] = "test-secret"
 from app.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 
+# StaticPool: every session shares ONE connection. Without it, each new
+# connection to ":memory:" is a brand-new empty database, and the TestClient
+# serves requests from a different thread than the test body.
 engine = create_engine(
     "sqlite:///:memory:",
     connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -61,6 +66,30 @@ def make_user(client):
         return headers, body["user"]
 
     return _make
+
+
+@pytest.fixture
+def make_admin(make_user):
+    """Registers a user, then promotes it directly in the DB (registration
+    can never create an admin). Returns (headers, user_json)."""
+
+    def _make(name="Ada Admin", email="admin@example.com", password="adminpass1"):
+        from app.models import User
+
+        headers, user = make_user(name=name, email=email, password=password)
+        db = TestingSessionLocal()
+        db.query(User).filter(User.id == user["id"]).update({"is_admin": True})
+        db.commit()
+        db.close()
+        return headers, user
+
+    return _make
+
+
+@pytest.fixture
+def admin_headers(make_admin):
+    headers, _ = make_admin()
+    return headers
 
 
 @pytest.fixture

@@ -5,7 +5,9 @@ scores each task's priority from its deadline, difficulty, and estimated time,
 classifies it (Low/Medium/High/Critical), and recommends what to work on next.
 
 Built to the exact spec in `claude/requirements-spec.md` (FR-01 through FR-21,
-NFR-01 through NFR-14, and the fixed priority formula in Section 3).
+NFR-01 through NFR-14, and the fixed priority formula in Section 3), plus an
+**admin panel** (v1.1) for managing every user and task, which is an addition
+beyond that spec — see [Admin panel](#admin-panel-v11).
 
 ## Stack
 
@@ -25,19 +27,25 @@ backend/
     schemas.py        Pydantic request/response schemas + validation
     priority.py        Priority formula (Section 3 of the spec)
     security.py        Password hashing + JWT
-    deps.py             Auth dependency (get_current_user)
+    deps.py             Auth dependencies (get_current_user, require_admin)
+    task_service.py     Shared task helpers (overdue, sorting, live priority refresh)
+    seed.py             Bootstrap/promote an admin account
     routers/
       auth.py           /auth: register, login, logout, me
       tasks.py          /tasks: CRUD, filter, sort, upcoming, complete
-      dashboard.py      /dashboard: summary + recommendation
-  alembic/               DB migrations
-  tests/                 pytest suite (auth, tasks, priority, dashboard)
+      dashboard.py      /dashboard: student summary + recommendation
+      admin.py          /admin: platform stats, all users, all tasks
+  alembic/               DB migrations (0001 initial, 0002 admin roles)
+  tests/                 pytest suite (auth, tasks, priority, dashboard, admin)
 frontend/
   src/
-    api/client.ts        Typed fetch client
+    api/client.ts        Typed fetch client (student + admin APIs)
     context/AuthContext.tsx
     pages/                Login, Register, Dashboard, Tasks, Task form/detail
-    components/           Navbar, TaskCard, PriorityBadge, ProtectedRoute
+    pages/admin/          Admin overview, Users, User detail, All tasks
+    components/           Navbar, TaskCard, PriorityBadge, StatTile, Modal, route guards
+    components/charts/    Dependency-free SVG/HTML charts with tooltips + table view
+    components/admin/     User/task edit modals, admin task table
 docker-compose.yml
 ```
 
@@ -46,9 +54,13 @@ docker-compose.yml
 ### Option A — Docker Compose (recommended)
 
 ```bash
-cp backend/.env.example backend/.env      # edit SECRET_KEY for anything beyond local use
-docker compose up --build
+cp backend/.env.example backend/.env      # edit SECRET_KEY and ADMIN_PASSWORD
+ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='a-strong-password' docker compose up --build
 ```
+
+The admin account is created on first startup from `ADMIN_EMAIL` /
+`ADMIN_PASSWORD` (defaults exist in `docker-compose.yml` for local use only —
+override them).
 
 - Frontend: http://localhost:3000
 - Backend API docs (Swagger): http://localhost:8000/docs
@@ -84,7 +96,7 @@ pip install -r requirements.txt
 pytest
 ```
 
-> **Note on this build:** the sandbox this project was generated in has no
+> **Note on this build (v1.0 and v1.1):** the sandbox this project was generated in has no
 > outbound access to PyPI or the npm registry, so `pip install` / `npm install`
 > and the resulting `pytest` / `npm run build` could not be executed here to
 > confirm a green run. The code was written and reviewed carefully against the
@@ -92,6 +104,36 @@ pytest
 > comments throughout `backend/app/`), but please run `pytest` and
 > `npm run build` yourselves as the first step after cloning — that's also
 > the human-review step NFR-14 asks for.
+
+## Admin panel (v1.1)
+
+Log in with the admin account and you land on **/admin**. Admins can still use
+the normal student pages (link in the nav bar).
+
+| Page | What it does |
+|---|---|
+| **Overview** `/admin` | KPI tiles (students, open tasks + hours, completion rate, overdue, critical open, accounts) that each link to the filtered list behind them; 14-day created-vs-completed trend; open tasks by priority, by deadline band (the spec's bands), by difficulty, and by subject; "students who need attention" (most overdue / critical work); latest tasks feed. Every chart has hover tooltips and a Table toggle. |
+| **Users** `/admin/users` | Every account with its user ID (click to copy), role, status, open/done/overdue counts, last activity. Search by name, email or ID; filter by role/status; sort. Add, edit (name, email, role, active, password reset) and delete users. |
+| **User detail** `/admin/users/:id` | One student's stats and all their tasks, with edit / complete / delete per task. |
+| **All tasks** `/admin/tasks` | Every task from every student, with search, subject/status/priority/overdue filters, sorting and pagination. Edit, complete/reopen or delete any task (priority is recalculated). |
+
+**Safety rules (enforced by the API, not just the UI):**
+- Every `/admin` endpoint returns 403 for non-admins. Registration can never create an admin.
+- An admin can't demote, deactivate or delete themselves, and the last active admin can't be removed.
+- Deactivating a user blocks login and invalidates their existing token, but keeps their data (safer than deleting).
+- Deleting a user deletes their tasks, behind a confirmation dialog that states how many.
+
+User IDs themselves are immutable UUIDs (other records reference them); "editing a user" changes the account's details, not its ID.
+
+To make another admin later: promote them from the Users page, or run
+`python -m app.seed someone@example.com 'password' "Name"` in the backend.
+
+### Also changed in v1.1
+
+- **Live priority:** deadline urgency depends on today's date, so stored scores went stale as deadlines approached. Scores for open tasks are now recomputed on every read (list, detail, dashboard, admin), so sorting and the recommendation always reflect current urgency.
+- **Richer student dashboard:** a prominent "What should I work on today?" card with the reason (due when, difficulty, hours), KPI tiles incl. hours due this week and completion %, open work split by priority, an "Up next" queue, and overdue/upcoming lists.
+- **Bug fixes from v1.0:** added the missing `email-validator` dependency (needed by `EmailStr`); the test DB now uses a shared in-memory SQLite connection (`StaticPool`) so the TestClient sees the same tables; `tests/` is a package so `tests.conftest` isn't imported twice; deadline comparisons handle naive datetimes from SQLite.
+- Tasks now record `completed_at` (migration 0002 backfills it) to power the completions trend.
 
 ## Priority formula (Section 3 of the spec — implemented exactly, unmodified)
 
@@ -153,6 +195,24 @@ See `backend/app/priority.py` and `backend/tests/test_priority.py`.
 | NFR-12 | Reject invalid create/update | Same validation as NFR-06 |
 | NFR-13 | Modular design | Separate `routers/auth.py`, `routers/tasks.py`, `routers/dashboard.py`, `priority.py`, `security.py` |
 | NFR-14 | AI-generated code reviewed by a team member | **Action item for the team** — see below |
+
+### Admin additions (not in the official spec)
+
+The admin panel was requested after the spec was written, so it has no FR/NFR
+IDs. If you keep the spec as the SDD source of truth, add requirements for it
+(e.g. admin role, user management, cross-user task management, platform
+analytics) so the SDD narrative stays consistent. Note that it deliberately
+sits outside FR-21/NFR-05: those restrict *students* to their own tasks;
+admins are a separate, explicitly privileged role.
+
+| Capability | Where implemented | Tests |
+|---|---|---|
+| Admin role + access control | `deps.require_admin`, `User.is_admin` | `test_students_cannot_use_admin_routes`, `test_registration_never_grants_admin` |
+| List / search / view users | `GET /admin/users`, `GET /admin/users/{id}` | `test_admin_lists_all_users_with_task_counts`, `test_admin_user_search_and_role_filter` |
+| Create / edit / deactivate / delete users | `POST/PATCH/DELETE /admin/users` | `test_admin_edits_user`, `test_deactivated_user_cannot_log_in_or_use_token`, `test_admin_deletes_user_and_their_tasks` |
+| Self-lockout protection | `routers/admin.update_user`, `delete_user` | `test_admin_cannot_demote_or_deactivate_self` |
+| View / edit / delete any task | `GET/PATCH/DELETE /admin/tasks` | `test_admin_sees_every_students_tasks`, `test_admin_edits_any_task_and_priority_is_recalculated` |
+| Platform analytics | `GET /admin/stats` | `test_admin_stats` |
 
 ## For the team: NFR-14 sign-off
 
