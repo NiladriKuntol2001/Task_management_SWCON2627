@@ -33,7 +33,7 @@ def test_students_cannot_use_admin_routes(client, auth_headers):
         ("get", "/admin/stats"),
         ("get", "/admin/users"),
         ("get", "/admin/tasks"),
-        ("delete", "/admin/users/some-id"),
+        ("delete", "/admin/users/2"),
         ("delete", "/admin/tasks/some-id"),
     ]:
         resp = getattr(client, method)(path, headers=auth_headers)
@@ -59,7 +59,7 @@ def test_admin_lists_all_users_with_task_counts(client, admin_headers, make_user
     resp = client.get("/admin/users", headers=admin_headers)
     assert resp.status_code == 200
     rows = {u["email"]: u for u in resp.json()}
-    assert set(rows) == {"admin@example.com", "sam@example.com"}
+    assert set(rows) == {"admin123@gmail.com", "sam@example.com"}
     assert rows["sam@example.com"]["id"] == student["id"]
     assert rows["sam@example.com"]["total_tasks"] == 2
     assert rows["sam@example.com"]["overdue_tasks"] == 1
@@ -135,6 +135,7 @@ def test_admin_can_promote_student(client, admin_headers, make_user):
 
 
 def test_admin_cannot_demote_or_deactivate_self(client, make_admin):
+    # A second (non-root) admin, so the generic self-protection is what's tested.
     headers, admin = make_admin()
     assert client.patch(f"/admin/users/{admin['id']}", json={"is_admin": False}, headers=headers).status_code == 400
     assert client.patch(f"/admin/users/{admin['id']}", json={"is_active": False}, headers=headers).status_code == 400

@@ -59,7 +59,13 @@ export default function Navbar() {
         )}
       </div>
       <div className="navbar-user">
-        <span>{user.name}</span>
+        <NavLink to="/profile" className={({ isActive }) => `profile-link ${isActive ? "active" : ""}`} title="My profile">
+          <span className="avatar" aria-hidden="true">
+            {user.name.trim().charAt(0).toUpperCase()}
+          </span>
+          <span>{user.name}</span>
+          <span className="profile-id">ID {user.id}</span>
+        </NavLink>
         <button className="btn btn-secondary btn-sm" onClick={handleLogout}>
           Log out
         </button>

@@ -8,8 +8,8 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.database import Base, engine
-from app.routers import admin, auth, dashboard, tasks
-from app.seed import seed_admin_from_settings
+from app.routers import admin, auth, dashboard, profile, tasks
+from app.seed import seed_root_admin_from_settings
 
 # Create tables if they don't exist yet. Alembic (see alembic/) is the source of
 # truth for schema migrations in a real deployment; this is a convenience for
@@ -19,7 +19,7 @@ Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    seed_admin_from_settings()
+    seed_root_admin_from_settings()
     yield
 
 
@@ -60,6 +60,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 app.include_router(auth.router)
 app.include_router(tasks.router)
 app.include_router(dashboard.router)
+app.include_router(profile.router)
 app.include_router(admin.router)
 
 

@@ -29,7 +29,5 @@ export function formatNumber(n: number): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: 1 });
 }
 
-/** Shortened id for tables; the full id is available on hover / copy. */
-export function shortId(id: string): string {
-  return id.slice(0, 8);
-}
+/** The main administrator always has user ID 1. */
+export const ROOT_ADMIN_ID = 1;

@@ -3,7 +3,7 @@ export type Difficulty = "Easy" | "Medium" | "Hard" | "Very Hard";
 export type PriorityLevel = "Low" | "Medium" | "High" | "Critical";
 
 export interface User {
-  id: string;
+  id: number; // unique sequential user ID; the main admin is always 1
   name: string;
   email: string;
   is_admin: boolean;
@@ -13,7 +13,7 @@ export interface User {
 
 export interface Task {
   id: string;
-  owner_id: string;
+  owner_id: number;
   title: string;
   subject: string;
   deadline: string; // ISO datetime
@@ -112,7 +112,7 @@ export interface DailyActivity {
 }
 
 export interface StudentAtRisk {
-  user_id: string;
+  user_id: number;
   name: string;
   email: string;
   open: number;

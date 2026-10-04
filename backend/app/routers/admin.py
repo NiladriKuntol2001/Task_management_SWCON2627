@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.deps import require_admin
-from app.models import Difficulty, PriorityLevel, Task, User
+from app.models import ROOT_ADMIN_ID, Difficulty, PriorityLevel, Task, User
 from app.routers.tasks import apply_task_update
 from app.schemas import (
     AdminStats,
@@ -31,7 +31,7 @@ from app.schemas import (
     TaskOut,
     TaskUpdate,
 )
-from app.security import hash_password
+from app.security import hash_password, verify_password
 from app.task_service import (
     as_utc,
     deadline_sort_key,
@@ -98,7 +98,7 @@ def _user_stats(user: User, tasks: list[Task], now: datetime) -> AdminUserOut:
     )
 
 
-def _get_user_or_404(db: Session, user_id: str) -> User:
+def _get_user_or_404(db: Session, user_id: int) -> User:
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
@@ -132,7 +132,7 @@ def platform_stats(db: Session = Depends(get_db)):
     done_tasks = [t for t in tasks if t.completed]
     overdue = [t for t in open_tasks if is_overdue(t, now)]
 
-    tasks_by_owner: dict[str, list[Task]] = defaultdict(list)
+    tasks_by_owner: dict[int, list[Task]] = defaultdict(list)
     for t in tasks:
         tasks_by_owner[t.owner_id].append(t)
 
@@ -223,7 +223,7 @@ def platform_stats(db: Session = Depends(get_db)):
 @router.get("/users", response_model=list[AdminUserOut])
 def list_users(
     db: Session = Depends(get_db),
-    search: str | None = Query(default=None, description="Matches name, email or user id"),
+    search: str | None = Query(default=None, description="Matches name or email, or an exact user ID"),
     role: Literal["all", "admin", "student"] = "all",
     status_filter: Literal["all", "active", "inactive"] = Query(default="all", alias="status"),
     sort_by: Literal["name", "created", "open", "overdue"] = "created",
@@ -231,8 +231,13 @@ def list_users(
     now = datetime.now(timezone.utc)
     query = db.query(User)
     if search:
-        like = f"%{search.strip()}%"
-        query = query.filter(or_(User.name.ilike(like), User.email.ilike(like), User.id.ilike(like)))
+        term = search.strip().lstrip("#")
+        if term.isdigit():
+            # A number (or "#3") means "user ID 3" exactly — not every email containing a 3.
+            query = query.filter(User.id == int(term))
+        else:
+            like = f"%{term}%"
+            query = query.filter(or_(User.name.ilike(like), User.email.ilike(like)))
     if role != "all":
         query = query.filter(User.is_admin.is_(role == "admin"))
     if status_filter != "all":
@@ -242,7 +247,7 @@ def list_users(
     ids = [u.id for u in users]
     tasks = db.query(Task).filter(Task.owner_id.in_(ids)).all() if ids else []
     refresh_priorities(db, tasks)
-    by_owner: dict[str, list[Task]] = defaultdict(list)
+    by_owner: dict[int, list[Task]] = defaultdict(list)
     for t in tasks:
         by_owner[t.owner_id].append(t)
 
@@ -274,7 +279,7 @@ def create_user(payload: AdminUserCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/users/{user_id}", response_model=AdminUserDetail)
-def get_user(user_id: str, db: Session = Depends(get_db)):
+def get_user(user_id: int, db: Session = Depends(get_db)):
     user = _get_user_or_404(db, user_id)
     tasks = db.query(Task).options(joinedload(Task.owner)).filter(Task.owner_id == user.id).all()
     refresh_priorities(db, tasks)
@@ -287,13 +292,26 @@ def get_user(user_id: str, db: Session = Depends(get_db)):
 
 @router.patch("/users/{user_id}", response_model=AdminUserOut)
 def update_user(
-    user_id: str,
+    user_id: int,
     payload: AdminUserUpdate,
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
     user = _get_user_or_404(db, user_id)
     data = payload.model_dump(exclude_unset=True)
+
+    if user.id == ROOT_ADMIN_ID:
+        # The main administrator (ID 1) has a fixed email, is always an active
+        # admin, and changes their password only from their own profile page.
+        if "email" in data and data["email"].lower() != user.email.lower():
+            raise HTTPException(status_code=403, detail="The main administrator's email (user ID 1) can't be changed.")
+        if data.get("is_admin") is False or data.get("is_active") is False:
+            raise HTTPException(status_code=403, detail="The main administrator (user ID 1) must stay an active admin.")
+        if "password" in data:
+            raise HTTPException(
+                status_code=403,
+                detail="The main administrator's password can only be changed from their own profile page.",
+            )
 
     if user.id == admin.id:
         if data.get("is_admin") is False:
@@ -313,7 +331,10 @@ def update_user(
             raise HTTPException(status_code=409, detail="Another account already uses this email.")
 
     if "password" in data:
-        user.hashed_password = hash_password(data.pop("password"))
+        new_password = data.pop("password")
+        if verify_password(new_password, user.hashed_password):
+            raise HTTPException(status_code=400, detail="The new password must be different from the user's current password.")
+        user.hashed_password = hash_password(new_password)
     for field, value in data.items():
         setattr(user, field, value)
 
@@ -325,11 +346,13 @@ def update_user(
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(
-    user_id: str,
+    user_id: int,
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
     user = _get_user_or_404(db, user_id)
+    if user.id == ROOT_ADMIN_ID:
+        raise HTTPException(status_code=403, detail="The main administrator (user ID 1) can't be deleted.")
     if user.id == admin.id:
         raise HTTPException(status_code=400, detail="You can't delete your own account.")
     if user.is_admin and user.is_active and _active_admin_count(db) <= 1:
@@ -348,7 +371,7 @@ def delete_user(
 def list_all_tasks(
     db: Session = Depends(get_db),
     search: str | None = Query(default=None, description="Matches title, subject, student name or email"),
-    owner_id: str | None = None,
+    owner_id: int | None = None,
     subject: str | None = None,
     completed: bool | None = None,
     priority_level: PriorityLevel | None = None,
@@ -363,7 +386,7 @@ def list_all_tasks(
         query = query.filter(
             or_(Task.title.ilike(like), Task.subject.ilike(like), User.name.ilike(like), User.email.ilike(like))
         )
-    if owner_id:
+    if owner_id is not None:
         query = query.filter(Task.owner_id == owner_id)
     if subject:
         query = query.filter(Task.subject == subject)

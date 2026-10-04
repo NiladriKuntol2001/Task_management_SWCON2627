@@ -8,7 +8,7 @@ import AdminTaskTable from "../../components/admin/AdminTaskTable";
 import TaskEditModal from "../../components/admin/TaskEditModal";
 import UserFormModal from "../../components/admin/UserFormModal";
 import ConfirmDialog from "../../components/ConfirmDialog";
-import { formatDate, relativeTime } from "../../utils/format";
+import { formatDate, relativeTime, ROOT_ADMIN_ID } from "../../utils/format";
 
 export default function AdminUserDetailPage() {
   const { userId } = useParams();
@@ -23,9 +23,13 @@ export default function AdminUserDetailPage() {
   const [showCompleted, setShowCompleted] = useState(false);
 
   const load = () => {
-    if (!userId) return;
+    const id = Number(userId);
+    if (!Number.isInteger(id) || id < 1) {
+      setError("This user could not be found.");
+      return;
+    }
     adminApi
-      .getUser(userId)
+      .getUser(id)
       .then(setDetail)
       .catch(() => setError("This user could not be found."));
   };
@@ -38,6 +42,7 @@ export default function AdminUserDetailPage() {
 
   const { user, tasks } = detail;
   const isSelf = user.id === me?.id;
+  const isRoot = user.id === ROOT_ADMIN_ID;
   const visible = showCompleted ? tasks : tasks.filter((t) => !t.completed);
   const completionRate = user.total_tasks ? Math.round((100 * user.completed_tasks) / user.total_tasks) : 0;
 
@@ -53,13 +58,13 @@ export default function AdminUserDetailPage() {
             {user.name} {isSelf && <span className="you-tag">you</span>}
           </h1>
           <p className="page-subtitle">
-            {user.email} · <span className={`role-pill ${user.is_admin ? "role-admin" : ""}`}>{user.is_admin ? "Admin" : "Student"}</span>{" "}
+            {user.email} · <span className={`role-pill ${user.is_admin ? "role-admin" : ""}`}>{isRoot ? "Main admin" : user.is_admin ? "Admin" : "Student"}</span>{" "}
             <span className={`status-pill ${user.is_active ? "status-open" : "status-inactive"}`}>
               {user.is_active ? "Active" : "Deactivated"}
             </span>
           </p>
           <p className="page-subtitle">
-            User ID <code>{user.id}</code> · joined {formatDate(user.created_at)}
+            User ID <span className="id-chip">{user.id}</span> · joined {formatDate(user.created_at)}
             {user.last_activity && <> · last activity {relativeTime(user.last_activity)}</>}
           </p>
         </div>
@@ -71,8 +76,14 @@ export default function AdminUserDetailPage() {
             type="button"
             className="btn btn-danger"
             onClick={() => setDeletingUser(true)}
-            disabled={isSelf}
-            title={isSelf ? "You can't delete your own account" : undefined}
+            disabled={isSelf || isRoot}
+            title={
+              isRoot
+                ? "The main administrator (user ID 1) can't be deleted"
+                : isSelf
+                  ? "You can't delete your own account"
+                  : undefined
+            }
           >
             Delete user
           </button>

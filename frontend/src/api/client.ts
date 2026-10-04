@@ -82,6 +82,25 @@ export const api = {
 
   me: () => request<User>("/auth/me"),
 
+  // --- profile ---
+  getProfile: () => request<User>("/profile"),
+
+  changeEmail: (newEmail: string, currentPassword: string) =>
+    request<User>("/profile/email", {
+      method: "PUT",
+      body: JSON.stringify({ new_email: newEmail, current_password: currentPassword }),
+    }),
+
+  changePassword: (currentPassword: string, newPassword: string, confirmNewPassword: string) =>
+    request<void>("/profile/password", {
+      method: "PUT",
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+        confirm_new_password: confirmNewPassword,
+      }),
+    }),
+
   listTasks: (params: { subject?: string; completed?: boolean; overdueOnly?: boolean; sortBy?: "priority" | "deadline" } = {}) => {
     const search = new URLSearchParams();
     if (params.subject) search.set("subject", params.subject);
@@ -130,7 +149,7 @@ export interface AdminUserQuery {
 
 export interface AdminTaskQuery {
   search?: string;
-  owner_id?: string;
+  owner_id?: number | string;
   subject?: string;
   completed?: boolean;
   priority_level?: PriorityLevel;
@@ -145,15 +164,15 @@ export const adminApi = {
 
   listUsers: (q: AdminUserQuery = {}) => request<AdminUser[]>(`/admin/users${qs({ ...q })}`),
 
-  getUser: (id: string) => request<AdminUserDetail>(`/admin/users/${id}`),
+  getUser: (id: number) => request<AdminUserDetail>(`/admin/users/${id}`),
 
   createUser: (input: { name: string; email: string; password: string; is_admin: boolean }) =>
     request<AdminUser>("/admin/users", { method: "POST", body: JSON.stringify(input) }),
 
-  updateUser: (id: string, patch: AdminUserPatch) =>
+  updateUser: (id: number, patch: AdminUserPatch) =>
     request<AdminUser>(`/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
 
-  deleteUser: (id: string) => request<void>(`/admin/users/${id}`, { method: "DELETE" }),
+  deleteUser: (id: number) => request<void>(`/admin/users/${id}`, { method: "DELETE" }),
 
   listTasks: (q: AdminTaskQuery = {}) => request<AdminTaskPage>(`/admin/tasks${qs({ ...q })}`),
 

@@ -22,11 +22,11 @@ def get_current_user(
     if token is None:
         raise credentials_exception
 
-    user_id = decode_access_token(token)
-    if user_id is None:
-        raise credentials_exception
+    subject = decode_access_token(token)
+    if subject is None or not subject.isdigit():
+        raise credentials_exception  # also rejects old UUID-based tokens
 
-    user = db.get(User, user_id)
+    user = db.get(User, int(subject))
     if user is None:
         raise credentials_exception
     if not user.is_active:

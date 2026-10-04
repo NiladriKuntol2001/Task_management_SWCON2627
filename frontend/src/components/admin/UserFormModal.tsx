@@ -2,6 +2,8 @@ import { useState, type FormEvent } from "react";
 import { adminApi, ApiError } from "../../api/client";
 import type { AdminUser, AdminUserPatch } from "../../types";
 import Modal from "../Modal";
+import { useAuth } from "../../context/AuthContext";
+import { ROOT_ADMIN_ID } from "../../utils/format";
 
 /** Create a new account, or edit an existing one (name, email, role, status,
  *  password reset). Self-lockout options are disabled for the signed-in admin. */
@@ -12,12 +14,16 @@ export default function UserFormModal({
   onSaved,
 }: {
   user: AdminUser | null; // null = create
-  currentUserId: string;
+  currentUserId: number;
   onClose: () => void;
   onSaved: (user: AdminUser) => void;
 }) {
+  const { updateUser } = useAuth();
   const isEdit = user !== null;
   const isSelf = user?.id === currentUserId;
+  // The main administrator (user ID 1): fixed email, always an active admin,
+  // password changed only from their own profile page. The API enforces this too.
+  const isRoot = user?.id === ROOT_ADMIN_ID;
 
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
@@ -43,6 +49,7 @@ export default function UserFormModal({
         if (isActive !== user.is_active) patch.is_active = isActive;
         if (password) patch.password = password;
         saved = await adminApi.updateUser(user.id, patch);
+        if (saved.id === currentUserId) updateUser(saved); // keep the navbar in sync
       } else {
         saved = await adminApi.createUser({ name, email, password, is_admin: isAdmin });
       }
@@ -82,7 +89,7 @@ export default function UserFormModal({
         {isEdit && (
           <div className="readonly-field">
             <span>User ID</span>
-            <code>{user?.id}</code>
+            <span className="id-chip">{user?.id}</span>
           </div>
         )}
 
@@ -94,10 +101,14 @@ export default function UserFormModal({
 
         <label>
           Email
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isRoot} />
+          {isRoot && <span className="field-hint">The main administrator's email is fixed.</span>}
           {fieldErrors.email && <span className="field-error">{fieldErrors.email}</span>}
         </label>
 
+        {isRoot ? (
+          <p className="field-hint">The main administrator changes their password from their own profile page.</p>
+        ) : (
         <label>
           {isEdit ? "New password" : "Password"}
           <input
@@ -110,8 +121,10 @@ export default function UserFormModal({
             placeholder={isEdit ? "Leave blank to keep the current password" : ""}
           />
           <span className="field-hint">At least 8 characters.</span>
+          {isEdit && <span className="field-hint">Must be different from the user's current password.</span>}
           {fieldErrors.password && <span className="field-error">{fieldErrors.password}</span>}
         </label>
+        )}
 
         <div className="toggle-row">
           <label className="checkbox-label">
@@ -119,7 +132,7 @@ export default function UserFormModal({
               type="checkbox"
               checked={isAdmin}
               onChange={(e) => setIsAdmin(e.target.checked)}
-              disabled={isSelf}
+              disabled={isSelf || isRoot}
             />
             Administrator
           </label>
@@ -129,7 +142,7 @@ export default function UserFormModal({
                 type="checkbox"
                 checked={isActive}
                 onChange={(e) => setIsActive(e.target.checked)}
-                disabled={isSelf}
+                disabled={isSelf || isRoot}
               />
               Account active
             </label>

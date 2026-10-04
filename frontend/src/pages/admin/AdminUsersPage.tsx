@@ -5,7 +5,7 @@ import type { AdminUser } from "../../types";
 import { useAuth } from "../../context/AuthContext";
 import UserFormModal from "../../components/admin/UserFormModal";
 import ConfirmDialog from "../../components/ConfirmDialog";
-import { formatDate, relativeTime, shortId } from "../../utils/format";
+import { formatDate, relativeTime, ROOT_ADMIN_ID } from "../../utils/format";
 
 type Role = NonNullable<AdminUserQuery["role"]>;
 type Status = NonNullable<AdminUserQuery["status"]>;
@@ -23,7 +23,6 @@ export default function AdminUsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<AdminUser | null | undefined>(undefined); // undefined = closed, null = create
   const [deleting, setDeleting] = useState<AdminUser | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
   const search = params.get("search") ?? "";
 
   const setParam = (key: string, value: string) => {
@@ -52,16 +51,6 @@ export default function AdminUsersPage() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [search, role, status, sortBy]);
-
-  const copyId = async (id: string) => {
-    try {
-      await navigator.clipboard.writeText(id);
-      setCopied(id);
-      setTimeout(() => setCopied(null), 1500);
-    } catch {
-      // Clipboard can be unavailable (e.g. insecure context); the full id is still in the tooltip.
-    }
-  };
 
   const totals = users
     ? {
@@ -93,7 +82,7 @@ export default function AdminUsersPage() {
             type="search"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Name, email or user ID"
+            placeholder="Name, email, or user ID (e.g. 3)"
           />
         </label>
         <label>
@@ -134,7 +123,7 @@ export default function AdminUsersPage() {
             <thead>
               <tr>
                 <th>User</th>
-                <th>User ID</th>
+                <th className="num">User ID</th>
                 <th>Role</th>
                 <th>Status</th>
                 <th className="num">Open</th>
@@ -155,18 +144,13 @@ export default function AdminUsersPage() {
                     {u.id === me?.id && <span className="you-tag">you</span>}
                     <div className="cell-sub">{u.email}</div>
                   </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="id-chip"
-                      title={`${u.id} — click to copy`}
-                      onClick={() => copyId(u.id)}
-                    >
-                      {copied === u.id ? "Copied" : shortId(u.id)}
-                    </button>
+                  <td className="num">
+                    <span className="id-chip">{u.id}</span>
                   </td>
                   <td>
-                    <span className={`role-pill ${u.is_admin ? "role-admin" : ""}`}>{u.is_admin ? "Admin" : "Student"}</span>
+                    <span className={`role-pill ${u.is_admin ? "role-admin" : ""}`}>
+                      {u.id === ROOT_ADMIN_ID ? "Main admin" : u.is_admin ? "Admin" : "Student"}
+                    </span>
                   </td>
                   <td>
                     <span className={`status-pill ${u.is_active ? "status-open" : "status-inactive"}`}>
@@ -189,8 +173,14 @@ export default function AdminUsersPage() {
                       type="button"
                       className="btn btn-sm btn-danger"
                       onClick={() => setDeleting(u)}
-                      disabled={u.id === me?.id}
-                      title={u.id === me?.id ? "You can't delete your own account" : undefined}
+                      disabled={u.id === me?.id || u.id === ROOT_ADMIN_ID}
+                      title={
+                        u.id === ROOT_ADMIN_ID
+                          ? "The main administrator (user ID 1) can't be deleted"
+                          : u.id === me?.id
+                            ? "You can't delete your own account"
+                            : undefined
+                      }
                     >
                       Delete
                     </button>

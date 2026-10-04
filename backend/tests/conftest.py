@@ -29,10 +29,21 @@ engine = create_engine(
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+ROOT_ADMIN_EMAIL = "admin123@gmail.com"
+ROOT_ADMIN_PASSWORD = "admin@123"
+
+
 @pytest.fixture(autouse=True)
 def _reset_db():
+    """Fresh schema per test, with the main admin (user ID 1) seeded exactly
+    as the app does on startup."""
+    from app.seed import ensure_root_admin
+
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    db = TestingSessionLocal()
+    ensure_root_admin(db, ROOT_ADMIN_EMAIL, ROOT_ADMIN_PASSWORD, "Administrator")
+    db.close()
     yield
 
 
@@ -87,9 +98,11 @@ def make_admin(make_user):
 
 
 @pytest.fixture
-def admin_headers(make_admin):
-    headers, _ = make_admin()
-    return headers
+def admin_headers(client):
+    """Logged in as the main administrator (user ID 1)."""
+    resp = client.post("/auth/login", json={"email": ROOT_ADMIN_EMAIL, "password": ROOT_ADMIN_PASSWORD})
+    assert resp.status_code == 200, resp.text
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
 @pytest.fixture

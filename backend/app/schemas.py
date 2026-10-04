@@ -1,7 +1,7 @@
 """Pydantic request/response schemas, incl. input validation (FR-10, NFR-06, NFR-12)."""
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationInfo, field_validator
 
 from app.models import Difficulty, PriorityLevel
 
@@ -29,7 +29,7 @@ class UserLogin(BaseModel):
 
 
 class UserOut(BaseModel):
-    id: str
+    id: int  # unique sequential user ID; the main admin is always 1
     name: str
     email: EmailStr
     is_admin: bool = False
@@ -43,6 +43,29 @@ class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserOut
+
+
+# ---------------------------------------------------------------------------
+# Profile (signed-in user changes their own email / password)
+# ---------------------------------------------------------------------------
+
+
+class EmailChange(BaseModel):
+    new_email: EmailStr
+    current_password: str = Field(min_length=1)  # re-confirm identity before changing login email
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8, max_length=128)
+    confirm_new_password: str
+
+    @field_validator("confirm_new_password")
+    @classmethod
+    def passwords_match(cls, v: str, info: ValidationInfo) -> str:
+        if "new_password" in info.data and v != info.data["new_password"]:
+            raise ValueError("New password and confirmation do not match.")
+        return v
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +108,7 @@ class TaskUpdate(BaseModel):
 
 class TaskOut(BaseModel):
     id: str
-    owner_id: str
+    owner_id: int
     title: str
     subject: str
     deadline: datetime
@@ -184,7 +207,7 @@ class DailyActivity(BaseModel):
 
 
 class StudentAtRisk(BaseModel):
-    user_id: str
+    user_id: int
     name: str
     email: str
     open: int

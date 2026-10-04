@@ -29,19 +29,20 @@ backend/
     security.py        Password hashing + JWT
     deps.py             Auth dependencies (get_current_user, require_admin)
     task_service.py     Shared task helpers (overdue, sorting, live priority refresh)
-    seed.py             Bootstrap/promote an admin account
+    seed.py             Main admin (user ID 1) + extra admin accounts
     routers/
       auth.py           /auth: register, login, logout, me
       tasks.py          /tasks: CRUD, filter, sort, upcoming, complete
       dashboard.py      /dashboard: student summary + recommendation
+      profile.py        /profile: view account, change email, change password
       admin.py          /admin: platform stats, all users, all tasks
-  alembic/               DB migrations (0001 initial, 0002 admin roles)
-  tests/                 pytest suite (auth, tasks, priority, dashboard, admin)
+  alembic/               DB migrations (0001 initial, 0002 admin roles, 0003 numeric user IDs)
+  tests/                 pytest suite (auth, tasks, priority, dashboard, admin, profile, user IDs)
 frontend/
   src/
     api/client.ts        Typed fetch client (student + admin APIs)
     context/AuthContext.tsx
-    pages/                Login, Register, Dashboard, Tasks, Task form/detail
+    pages/                Login, Register, Dashboard, Tasks, Task form/detail, Profile
     pages/admin/          Admin overview, Users, User detail, All tasks
     components/           Navbar, TaskCard, PriorityBadge, StatTile, Modal, route guards
     components/charts/    Dependency-free SVG/HTML charts with tooltips + table view
@@ -54,13 +55,14 @@ docker-compose.yml
 ### Option A — Docker Compose (recommended)
 
 ```bash
-cp backend/.env.example backend/.env      # edit SECRET_KEY and ADMIN_PASSWORD
-ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='a-strong-password' docker compose up --build
+cp backend/.env.example backend/.env      # edit SECRET_KEY
+docker compose up --build
 ```
 
-The admin account is created on first startup from `ADMIN_EMAIL` /
-`ADMIN_PASSWORD` (defaults exist in `docker-compose.yml` for local use only —
-override them).
+On first startup the main administrator is created as **user ID 1** with
+email `admin123@gmail.com` and password `admin@123`. Log in with those, then
+change the password on **My profile** before anyone else can reach the app
+(the default password is published in this README).
 
 - Frontend: http://localhost:3000
 - Backend API docs (Swagger): http://localhost:8000/docs
@@ -96,7 +98,7 @@ pip install -r requirements.txt
 pytest
 ```
 
-> **Note on this build (v1.0 and v1.1):** the sandbox this project was generated in has no
+> **Note on this build (v1.0–v1.2):** the sandbox this project was generated in has no
 > outbound access to PyPI or the npm registry, so `pip install` / `npm install`
 > and the resulting `pytest` / `npm run build` could not be executed here to
 > confirm a green run. The code was written and reviewed carefully against the
@@ -104,6 +106,40 @@ pytest
 > comments throughout `backend/app/`), but please run `pytest` and
 > `npm run build` yourselves as the first step after cloning — that's also
 > the human-review step NFR-14 asks for.
+
+## User IDs and profile (v1.2)
+
+**User IDs.** Every account has a unique, sequential number. The main
+administrator is always **1**; everyone else is numbered 2, 3, 4… in signup
+order. IDs are never reused, even after an account is deleted. The ID is
+shown on the profile page, in the navbar, and in the admin Users table (admins
+can search for a user by typing their ID, e.g. `3`).
+
+**Main administrator (ID 1).**
+- Created automatically on startup with `admin123@gmail.com` / `admin@123`
+  (configurable via `ADMIN_EMAIL` / `ADMIN_PASSWORD`, defaults in
+  `docker-compose.yml` and `.env.example`). Restarts never reset the password.
+- Its email is fixed. It can't be demoted, deactivated or deleted, and its
+  password can't be reset by another admin. It changes its own password from
+  **My profile**.
+
+**My profile** (`/profile`, click your name in the navbar), for every user:
+- View user ID, name, email, role and signup date.
+- **Change email:** needs your current password. Rejected if it's your
+  current email, already used by another account, or invalid.
+- **Change password:** needs your current password, a new password of at
+  least 8 characters, and a matching confirmation. **The new password must be
+  different from your current (previous) password.** Checked in the form
+  while typing, and again by the server. Admin password resets follow the
+  same "must differ" rule.
+
+**Upgrading an existing database:** `alembic upgrade head` runs migration
+0003, which converts the old UUID IDs to numbers while keeping every user and
+task. Existing users become 2, 3, … by signup date, and an existing
+`admin123@gmail.com` account becomes 1. Everyone has to log in again once,
+because old login tokens held UUIDs. An earlier `admin@example.com` admin
+account (from v1.1 defaults) stays as an extra admin; delete it from the Users
+page if you don't need it.
 
 ## Admin panel (v1.1)
 
@@ -123,10 +159,11 @@ the normal student pages (link in the nav bar).
 - Deactivating a user blocks login and invalidates their existing token, but keeps their data (safer than deleting).
 - Deleting a user deletes their tasks, behind a confirmation dialog that states how many.
 
-User IDs themselves are immutable UUIDs (other records reference them); "editing a user" changes the account's details, not its ID.
+User IDs are permanent numbers (tasks reference them); "editing a user" changes the account's details, not its ID.
 
 To make another admin later: promote them from the Users page, or run
 `python -m app.seed someone@example.com 'password' "Name"` in the backend.
+(The main admin is always user ID 1; see [User IDs and profile](#user-ids-and-profile-v12).)
 
 ### Also changed in v1.1
 
@@ -196,7 +233,7 @@ See `backend/app/priority.py` and `backend/tests/test_priority.py`.
 | NFR-13 | Modular design | Separate `routers/auth.py`, `routers/tasks.py`, `routers/dashboard.py`, `priority.py`, `security.py` |
 | NFR-14 | AI-generated code reviewed by a team member | **Action item for the team** — see below |
 
-### Admin additions (not in the official spec)
+### Additions beyond the official spec (admin panel v1.1, profile + IDs v1.2)
 
 The admin panel was requested after the spec was written, so it has no FR/NFR
 IDs. If you keep the spec as the SDD source of truth, add requirements for it
@@ -213,6 +250,12 @@ admins are a separate, explicitly privileged role.
 | Self-lockout protection | `routers/admin.update_user`, `delete_user` | `test_admin_cannot_demote_or_deactivate_self` |
 | View / edit / delete any task | `GET/PATCH/DELETE /admin/tasks` | `test_admin_sees_every_students_tasks`, `test_admin_edits_any_task_and_priority_is_recalculated` |
 | Platform analytics | `GET /admin/stats` | `test_admin_stats` |
+| Numeric user IDs, main admin = 1 (v1.2) | `models.User.id`, `ROOT_ADMIN_ID`, `seed.ensure_root_admin`, migration 0003 | `tests/test_user_ids.py` |
+| Profile: change email / password, new ≠ previous (v1.2) | `routers/profile.py`, `pages/ProfilePage.tsx` | `tests/test_profile.py` |
+
+The profile and ID features are also outside the official spec; they rely on
+NFR-03 (passwords hashed, incl. changed ones), NFR-04 (login required),
+NFR-06/NFR-12 (validation) and NFR-07 (clear error messages).
 
 ## For the team: NFR-14 sign-off
 
