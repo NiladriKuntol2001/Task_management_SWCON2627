@@ -1,0 +1,44 @@
+diff --git a/backend/app/schemas.py b/backend/app/schemas.py
+index daf85f2..70bfe1d 100644
+--- a/backend/app/schemas.py
++++ b/backend/app/schemas.py
+@@ -15,6 +15,11 @@ class UserCreate(BaseModel):
+     email: EmailStr
+     password: str = Field(min_length=8, max_length=128)
+ 
++    @field_validator("email")
++    @classmethod
++    def lower_email(cls, v: str) -> str:
++        return v.lower()
++
+     @field_validator("name")
+     @classmethod
+     def name_not_blank(cls, v: str) -> str:
+@@ -27,6 +32,11 @@ class UserLogin(BaseModel):
+     email: EmailStr
+     password: str
+ 
++    @field_validator("email")
++    @classmethod
++    def lower_email(cls, v: str) -> str:
++        return v.lower()
++
+ 
+ class UserOut(BaseModel):
+     id: str
+@@ -75,6 +85,15 @@ class TaskUpdate(BaseModel):
+     estimated_hours: float | None = Field(default=None, gt=0, le=1000)
+     completed: bool | None = None
+ 
++    @field_validator(
++        "title", "subject", "deadline", "difficulty", "estimated_hours", "completed", mode="before"
++    )
++    @classmethod
++    def not_null(cls, v):
++        if v is None:
++            raise ValueError("This field cannot be null.")
++        return v
++
+     @field_validator("title", "subject")
+     @classmethod
+     def not_blank(cls, v: str | None) -> str | None:
