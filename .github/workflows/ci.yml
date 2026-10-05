@@ -1,0 +1,94 @@
+# Continuous verification: every pull request is built, tested and scanned.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    name: Backend tests and coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest-cov
+      - name: Run all tests (team suite + independent verification suite)
+        run: >
+          pytest -v
+          --cov=app --cov-report=term-missing --cov-report=xml
+          --cov-fail-under=80
+          --junitxml=test-results.xml
+      - name: Requirement-level summary
+        if: always()
+        run: |
+          {
+            echo "### Test results"
+            echo ""
+            echo "| Area | Tests |"
+            echo "| --- | --- |"
+            for area in AUTH TASK PRI FLT SORT UPC OVD DASH REC SEC NFR; do
+              n=$(grep -o "test_TC_${area}_" test-results.xml | wc -l || true)
+              echo "| TC-${area} | ${n} |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-results
+          path: |
+            backend/test-results.xml
+            backend/coverage.xml
+
+  security-scan:
+    name: Security scan (TC-SEC-10, NFR-08)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Static analysis of the application code
+        run: |
+          pip install bandit
+          bandit -r app -ll
+      - name: Known-vulnerable dependencies
+        # Report-only for now: the team still has to upgrade the pinned versions.
+        # Remove "continue-on-error" once the audit is clean.
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+
+  frontend-build:
+    name: Frontend type-check, build and audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run build
+      - name: Dependency audit (high and critical)
+        continue-on-error: true
+        run: npm audit --audit-level=high
