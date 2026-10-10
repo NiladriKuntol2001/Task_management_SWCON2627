@@ -2,8 +2,7 @@
 
 Every expected value below was calculated BY HAND from Section 3 of
 requirements-spec.md (see the test specification, "Priority formula test
-oracle"). None was obtained by running the implementation, so a test can only
-pass if the code really follows the specification.
+oracle").
 
 Test IDs (TC-PRI-xx) match the traceability matrix in the report.
 Cases where the specification is ambiguous (SPEC-GAP) accept every valid
@@ -67,21 +66,22 @@ def test_TC_PRI_02_deadline_band_edges(delta, expected):
     assert deadline_score(NOW + delta, NOW) == expected
 
 
-# --- TC-PRI-02g: SPEC-GAP-1, times the spec's bands do not cover -------------
+# --- TC-PRI-02g: times between the spec's bands (team decision D1) -----------
+# D1: remaining time is rounded UP to whole days, so 2.5 days counts as 3 days (score 50).
 @pytest.mark.parametrize(
-    "delta, allowed",
+    "delta, expected",
     [
-        (timedelta(hours=49), {50, 75}),  # just over 2 days
-        (timedelta(hours=60), {50, 75}),  # 2.5 days
-        (timedelta(hours=71), {50, 75}),  # just under 3 days
-        (timedelta(hours=145), {25, 50}),  # just over 6 days
-        (timedelta(hours=156), {25, 50}),  # 6.5 days
-        (timedelta(hours=167), {25, 50}),  # just under 7 days
+        (timedelta(hours=49), 50),   # 2.04 days -> 3 days
+        (timedelta(hours=60), 50),   # 2.5 days  -> 3 days
+        (timedelta(hours=71), 50),   # 2.96 days -> 3 days
+        (timedelta(hours=145), 25),  # 6.04 days -> 7 days
+        (timedelta(hours=156), 25),  # 6.5 days  -> 7 days
+        (timedelta(hours=167), 25),  # 6.96 days -> 7 days
+        (timedelta(hours=337), 10),  # 14.04 days -> 15 days
     ],
 )
-def test_TC_PRI_02g_spec_gap_between_bands(delta, allowed):
-    """Spec bands are '1-2 days' and '3-6 days' with nothing between them."""
-    assert deadline_score(NOW + delta, NOW) in allowed
+def test_TC_PRI_02g_remaining_time_is_rounded_up_to_whole_days(delta, expected):
+    assert deadline_score(NOW + delta, NOW) == expected
 
 
 # --- TC-PRI-03 / 04: difficulty and time scores -----------------------------
