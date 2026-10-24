@@ -92,3 +92,32 @@ def test_me_returns_current_user(client, auth_headers):
 def test_logout_requires_auth_and_succeeds(client, auth_headers):
     resp = client.post("/auth/logout", headers=auth_headers)
     assert resp.status_code == 204
+
+
+def test_email_is_case_insensitive_for_register_and_login(client):
+    r = client.post("/auth/register", json={"name": "Case", "email": "Mixed.Case@Example.com", "password": "abcd1234"})
+    assert r.status_code == 201
+    assert r.json()["user"]["email"] == "mixed.case@example.com"
+
+    dup = client.post("/auth/register", json={"name": "Dup", "email": "MIXED.CASE@example.com", "password": "abcd1234"})
+    assert dup.status_code == 409
+
+    login = client.post("/auth/login", json={"email": "MIXED.case@EXAMPLE.com", "password": "abcd1234"})
+    assert login.status_code == 200
+
+
+def test_login_matches_legacy_mixed_case_email(client):
+    """Accounts stored before DEF-02 was fixed may still hold uppercase letters."""
+    from app.models import User
+    from app.security import hash_password
+    from tests.conftest import override_get_db
+
+    db = next(override_get_db())
+    db.add(User(name="Legacy", email="Legacy@Example.com", hashed_password=hash_password("abcd1234")))
+    db.commit()
+    db.close()
+
+    r = client.post("/auth/login", json={"email": "legacy@example.com", "password": "abcd1234"})
+    assert r.status_code == 200
+    dup = client.post("/auth/register", json={"name": "X", "email": "legacy@example.com", "password": "abcd1234"})
+    assert dup.status_code == 409

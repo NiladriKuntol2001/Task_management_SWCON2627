@@ -44,7 +44,7 @@ def get_dashboard(
         t for t in incomplete if t.priority_level in (PriorityLevel.HIGH, PriorityLevel.CRITICAL)
     ]
     upcoming = sorted(
-        [t for t in incomplete if as_utc(t.deadline) <= horizon], key=deadline_sort_key
+        [t for t in incomplete if now <= as_utc(t.deadline) <= horizon], key=deadline_sort_key
     )
     overdue = sorted([t for t in incomplete if is_overdue(t, now)], key=deadline_sort_key)
 

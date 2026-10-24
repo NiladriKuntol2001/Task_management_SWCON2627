@@ -11,6 +11,7 @@ Extra admins can be created or promoted by hand:
 """
 import sys
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -22,7 +23,7 @@ from app.security import hash_password
 def ensure_root_admin(db: Session, email: str, password: str, name: str = "Administrator") -> User:
     root = db.get(User, ROOT_ADMIN_ID)
     if root is None:
-        clash = db.query(User).filter(User.email == email).first()
+        clash = db.query(User).filter(func.lower(User.email) == email.lower()).first()
         if clash is not None:
             raise RuntimeError(
                 f"Cannot create the main admin (ID {ROOT_ADMIN_ID}): {email} is already used by user ID {clash.id}."
@@ -30,7 +31,7 @@ def ensure_root_admin(db: Session, email: str, password: str, name: str = "Admin
         root = User(
             id=ROOT_ADMIN_ID,
             name=name,
-            email=email,
+            email=email.lower(),
             hashed_password=hash_password(password),
             is_admin=True,
             is_active=True,
@@ -46,9 +47,9 @@ def ensure_root_admin(db: Session, email: str, password: str, name: str = "Admin
 
 def ensure_admin(db: Session, email: str, password: str, name: str = "Administrator") -> User:
     """Create or promote an additional admin account (never ID 1)."""
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter(func.lower(User.email) == email.lower()).first()
     if user is None:
-        user = User(name=name, email=email, hashed_password=hash_password(password), is_admin=True)
+        user = User(name=name, email=email.lower(), hashed_password=hash_password(password), is_admin=True)
         db.add(user)
     else:
         user.is_admin = True

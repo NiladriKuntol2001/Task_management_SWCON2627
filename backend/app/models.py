@@ -26,6 +26,12 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _enum_values(enum_cls: type[enum.Enum]) -> list[str]:
+    # Store enum *values* ("Very Hard"), matching the Postgres types created in
+    # migration 0001, rather than SQLAlchemy's default of member names.
+    return [member.value for member in enum_cls]
+
+
 class Difficulty(str, enum.Enum):
     EASY = "Easy"
     MEDIUM = "Medium"
@@ -79,7 +85,7 @@ class Task(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     subject: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    difficulty: Mapped[Difficulty] = mapped_column(SAEnum(Difficulty), nullable=False)
+    difficulty: Mapped[Difficulty] = mapped_column(SAEnum(Difficulty, name="difficulty", values_callable=_enum_values), nullable=False)
     estimated_hours: Mapped[float] = mapped_column(Float, nullable=False)
 
     completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -89,7 +95,7 @@ class Task(Base):
     # queried/sorted/filtered without recalculating on every read.
     priority_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     priority_level: Mapped[PriorityLevel] = mapped_column(
-        SAEnum(PriorityLevel), nullable=False, default=PriorityLevel.LOW
+        SAEnum(PriorityLevel, name="prioritylevel", values_callable=_enum_values), nullable=False, default=PriorityLevel.LOW
     )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

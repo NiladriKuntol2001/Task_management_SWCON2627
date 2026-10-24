@@ -5,6 +5,11 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationInfo, fie
 
 from app.models import Difficulty, PriorityLevel
 
+
+def _lower_email(v: str | None) -> str | None:
+    # DEF-02: emails are case-insensitive, so they are always stored lowercased.
+    return v.lower() if v is not None else v
+
 # ---------------------------------------------------------------------------
 # Auth / users
 # ---------------------------------------------------------------------------
@@ -14,6 +19,8 @@ class UserCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+
+    _normalize_email = field_validator("email")(_lower_email)
 
     @field_validator("name")
     @classmethod
@@ -26,6 +33,8 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+    _normalize_email = field_validator("email")(_lower_email)
 
 
 class UserOut(BaseModel):
@@ -53,6 +62,8 @@ class Token(BaseModel):
 class EmailChange(BaseModel):
     new_email: EmailStr
     current_password: str = Field(min_length=1)  # re-confirm identity before changing login email
+
+    _normalize_email = field_validator("new_email")(_lower_email)
 
 
 class PasswordChange(BaseModel):
@@ -97,6 +108,17 @@ class TaskUpdate(BaseModel):
     difficulty: Difficulty | None = None
     estimated_hours: float | None = Field(default=None, gt=0, le=1000)
     completed: bool | None = None
+
+    @field_validator(
+        "title", "subject", "deadline", "difficulty", "estimated_hours", "completed", mode="before"
+    )
+    @classmethod
+    def not_null(cls, v):
+        # DEF-01: fields may be omitted, but an explicit null would hit the
+        # NOT NULL columns and crash with a 500, so reject it as a 422 instead.
+        if v is None:
+            raise ValueError("This field cannot be null.")
+        return v
 
     @field_validator("title", "subject")
     @classmethod
@@ -165,6 +187,8 @@ class AdminUserUpdate(BaseModel):
     is_admin: bool | None = None
     is_active: bool | None = None
     password: str | None = Field(default=None, min_length=8, max_length=128)
+
+    _normalize_email = field_validator("email")(_lower_email)
 
     @field_validator("name")
     @classmethod

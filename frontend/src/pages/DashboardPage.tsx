@@ -176,15 +176,13 @@ export default function DashboardPage() {
         </section>
       </div>
 
-      {dashboard.overdue_count > 0 && dashboard.upcoming_tasks.length > dashboard.overdue_count && (
+      {dashboard.overdue_count > 0 && dashboard.upcoming_tasks.length > 0 && (
         <section className="section">
           <h2>Also due this week</h2>
           <div className="task-list">
-            {dashboard.upcoming_tasks
-              .filter((t) => !t.is_overdue)
-              .map((task) => (
-                <TaskCard key={task.id} task={task} onComplete={handleComplete} />
-              ))}
+            {dashboard.upcoming_tasks.map((task) => (
+              <TaskCard key={task.id} task={task} onComplete={handleComplete} />
+            ))}
           </div>
         </section>
       )}

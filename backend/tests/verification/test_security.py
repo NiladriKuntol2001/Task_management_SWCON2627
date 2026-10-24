@@ -120,7 +120,8 @@ def test_TC_SEC_08b_frontend_never_injects_raw_html():
     if not src.exists():
         pytest.skip("frontend sources not present")
     offenders = [str(p) for p in src.rglob("*.ts*")
-                 if "dangerouslySetInnerHTML" in p.read_text() or ".innerHTML" in p.read_text()]
+                 if "dangerouslySetInnerHTML" in p.read_text(encoding="utf-8")
+                 or ".innerHTML" in p.read_text(encoding="utf-8")]
     assert offenders == []
 
 

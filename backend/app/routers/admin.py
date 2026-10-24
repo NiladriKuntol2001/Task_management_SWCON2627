@@ -264,7 +264,7 @@ def list_users(
 
 @router.post("/users", response_model=AdminUserOut, status_code=status.HTTP_201_CREATED)
 def create_user(payload: AdminUserCreate, db: Session = Depends(get_db)):
-    if db.query(User).filter(User.email == payload.email).first():
+    if db.query(User).filter(func.lower(User.email) == payload.email).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account with this email already exists.")
     user = User(
         name=payload.name,
@@ -326,7 +326,7 @@ def update_user(
         raise HTTPException(status_code=400, detail="There must always be at least one active admin.")
 
     if "email" in data and data["email"] != user.email:
-        clash = db.query(User).filter(User.email == data["email"], User.id != user.id).first()
+        clash = db.query(User).filter(func.lower(User.email) == data["email"], User.id != user.id).first()
         if clash:
             raise HTTPException(status_code=409, detail="Another account already uses this email.")
 

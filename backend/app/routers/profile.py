@@ -1,6 +1,7 @@
 """Profile: the signed-in user views their account and changes their own
 email or password. Every change re-checks the current password."""
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -44,7 +45,7 @@ def change_email(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="That is already your email address.",
         )
-    if db.query(User).filter(User.email == new_email, User.id != current_user.id).first():
+    if db.query(User).filter(func.lower(User.email) == new_email, User.id != current_user.id).first():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Another account already uses this email.",

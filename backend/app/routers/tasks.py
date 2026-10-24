@@ -96,16 +96,17 @@ def upcoming_deadlines(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """FR-17: incomplete tasks due within the next `days` days (overdue tasks
-    included, since they still need attention)."""
-    horizon = datetime.now(timezone.utc) + timedelta(days=days)
+    """FR-17: incomplete tasks due within the next `days` days. Overdue tasks are
+    excluded (decision D3, DEF-03); they are reported separately (FR-18)."""
+    now = datetime.now(timezone.utc)
+    horizon = now + timedelta(days=days)
     tasks = (
         db.query(Task)
         .filter(Task.owner_id == current_user.id, Task.completed.is_(False))
         .all()
     )
     refresh_priorities(db, tasks)
-    upcoming = sorted([t for t in tasks if as_utc(t.deadline) <= horizon], key=deadline_sort_key)
+    upcoming = sorted([t for t in tasks if now <= as_utc(t.deadline) <= horizon], key=deadline_sort_key)
     return [to_out(t) for t in upcoming]
 
 

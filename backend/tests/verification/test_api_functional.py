@@ -63,7 +63,6 @@ def test_TC_AUTH_04_duplicate_email_rejected(client, make_user):
     assert r.status_code == 409
 
 
-@pytest.mark.xfail(strict=True, reason="DEF-02: email uniqueness is case-sensitive (see defect log)")
 def test_TC_AUTH_04b_duplicate_email_is_case_insensitive(client, make_user):
     make_user(email="dup@example.com")
     r = client.post("/auth/register", json={"name": "B", "email": "DUP@example.com", "password": "abcd1234"})
@@ -179,7 +178,6 @@ def test_TC_TASK_08_invalid_edit_rejected_and_task_unchanged(client, auth_header
 
 
 @pytest.mark.parametrize("field", ["title", "subject", "deadline", "difficulty", "estimated_hours"])
-@pytest.mark.xfail(strict=True, reason="DEF-01: PATCH with an explicit null returns HTTP 500 (see defect log)")
 def test_TC_TASK_08b_explicit_null_must_not_crash_the_server(auth_headers, field):
     """A required field sent as null must be rejected (4xx), never a 500."""
     safe = TestClient(app, raise_server_exceptions=False)
@@ -342,7 +340,6 @@ def test_TC_UPC_02_completed_tasks_not_upcoming(client, auth_headers):
     assert client.get("/tasks/upcoming", headers=auth_headers).json() == []
 
 
-@pytest.mark.xfail(strict=True, reason="DEF-03: overdue tasks are listed as upcoming (decision D3 says they must not be)")
 def test_TC_UPC_03_overdue_tasks_not_listed_as_upcoming(client, auth_headers):
     """Team decision D3: FR-17 lists only tasks due in the next 7 days; overdue tasks belong to FR-18."""
     make_task(client, auth_headers, title="late", deadline=past_deadline(days=1))
