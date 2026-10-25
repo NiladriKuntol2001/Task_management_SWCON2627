@@ -41,6 +41,20 @@ def test_create_task_validation_errors(client, auth_headers):
     assert resp.status_code == 422
 
 
+def test_update_task_validation_errors(client, auth_headers):
+    created = _create_task(client, auth_headers).json()
+    invalid_updates = [
+        {"title": ""},
+        {"deadline": "not-a-date"},
+        {"difficulty": "Impossible"},
+        {"estimated_hours": 0},
+    ]
+
+    for payload in invalid_updates:
+        resp = client.patch(f"/tasks/{created['id']}", json=payload, headers=auth_headers)
+        assert resp.status_code == 422
+
+
 def test_get_task_details(client, auth_headers):
     created = _create_task(client, auth_headers).json()
     resp = client.get(f"/tasks/{created['id']}", headers=auth_headers)
@@ -173,9 +187,9 @@ def test_upcoming_deadlines_view(client, auth_headers):
 
 
 def test_data_isolation_list(client, auth_headers, make_user):
-    _create_task(client, auth_headers, title="Mine")
+    mine = _create_task(client, auth_headers, title="Mine").json()
     other_headers, _ = make_user(email="trent@example.com")
-    _create_task(client, other_headers, title="Theirs")
+    theirs = _create_task(client, other_headers, title="Theirs").json()
 
     resp = client.get("/tasks", headers=auth_headers)
     titles = [t["title"] for t in resp.json()]
@@ -184,3 +198,6 @@ def test_data_isolation_list(client, auth_headers, make_user):
     resp = client.get("/tasks", headers=other_headers)
     titles = [t["title"] for t in resp.json()]
     assert titles == ["Theirs"]
+
+    assert client.get(f"/tasks/{theirs['id']}", headers=auth_headers).status_code == 404
+    assert client.get(f"/tasks/{mine['id']}", headers=other_headers).status_code == 404

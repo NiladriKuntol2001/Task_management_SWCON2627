@@ -3,9 +3,18 @@ backend/__pycache__/
 backend/**/__pycache__/
 backend/.pytest_cache/
 backend/.env
+backend/.env.*
+!backend/.env.example
 
 frontend/node_modules/
 frontend/dist/
 frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Frontend TypeScript build artifacts
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
 
 .DS_Store
