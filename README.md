@@ -9,6 +9,40 @@ NFR-01 through NFR-14, and the fixed priority formula in Section 3), plus an
 **admin panel** (v1.1) for managing every user and task, which is an addition
 beyond that spec — see [Admin panel](#admin-panel-v11).
 
+## Screenshots
+
+### Student
+
+**Login**
+
+![Login page](images/login.png)
+
+**Dashboard**: today's recommended task, stats, open work by priority and upcoming deadlines.
+
+![Student dashboard](images/student-dashboard.png)
+
+**New task**: title, subject, deadline, difficulty and estimated hours.
+
+![New task form](images/new-task.png)
+
+**My profile**: account details, change email and change password.
+
+![My profile page](images/profile.png)
+
+### Admin
+
+**Admin dashboard**: platform-wide stats and charts.
+
+![Admin dashboard](images/admin-dashboard.png)
+
+**Users**: search, filter, view, edit and delete accounts.
+
+![Admin users page](images/admin-users.png)
+
+**All tasks**: every student's tasks with priority and status.
+
+![Admin all tasks page](images/admin-all-tasks.png)
+
 ## Stack
 
 - **Backend:** FastAPI + SQLAlchemy + PostgreSQL, JWT auth (python-jose),
