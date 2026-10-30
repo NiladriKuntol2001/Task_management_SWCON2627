@@ -256,7 +256,7 @@ See `backend/app/priority.py` and `backend/tests/test_priority.py`.
 | NFR-11 | Error messages on failure | `ApiError` surfaced in every page's error state |
 | NFR-12 | Reject invalid create/update | Same validation as NFR-06 |
 | NFR-13 | Modular design | Separate `routers/auth.py`, `routers/tasks.py`, `routers/dashboard.py`, `priority.py`, `security.py` |
-| NFR-14 | AI-generated code reviewed by a team member | **Action item for the team** — see below |
+| NFR-14 | AI-generated code reviewed by a team member | Reviews recorded in `docs/review-log.md` |
 
 ### Additions beyond the official spec (admin panel v1.1, profile + IDs v1.2)
 
