@@ -1,7 +1,5 @@
 # Verification suite (Member 3)
 
-Copy these into the repository root (same folder names) and commit them.
-
 | Path | Purpose |
 | --- | --- |
 | `backend/tests/verification/` | Independent tests written from the specification (not from the code) |
