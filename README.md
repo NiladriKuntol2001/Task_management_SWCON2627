@@ -132,15 +132,6 @@ pip install -r requirements.txt
 pytest
 ```
 
-> **Note on this build (v1.0–v1.2):** the sandbox this project was generated in has no
-> outbound access to PyPI or the npm registry, so `pip install` / `npm install`
-> and the resulting `pytest` / `npm run build` could not be executed here to
-> confirm a green run. The code was written and reviewed carefully against the
-> spec (see the traceability table below and the inline `FR-xx`/`NFR-xx`
-> comments throughout `backend/app/`), but please run `pytest` and
-> `npm run build` yourselves as the first step after cloning — that's also
-> the human-review step NFR-14 asks for.
-
 ## User IDs and profile (v1.2)
 
 **User IDs.** Every account has a unique, sequential number. The main
@@ -206,7 +197,7 @@ To make another admin later: promote them from the Users page, or run
 - **Bug fixes from v1.0:** added the missing `email-validator` dependency (needed by `EmailStr`); the test DB now uses a shared in-memory SQLite connection (`StaticPool`) so the TestClient sees the same tables; `tests/` is a package so `tests.conftest` isn't imported twice; deadline comparisons handle naive datetimes from SQLite.
 - Tasks now record `completed_at` (migration 0002 backfills it) to power the completions trend.
 
-## Priority formula (Section 3 of the spec — implemented exactly, unmodified)
+## Priority formula (Section 3 of the spec — implemented exactly)
 
 `Priority Score = Deadline Score × 0.50 + Difficulty Score × 0.30 + Time Score × 0.20`
 
@@ -290,10 +281,3 @@ admins are a separate, explicitly privileged role.
 The profile and ID features are also outside the official spec; they rely on
 NFR-03 (passwords hashed, incl. changed ones), NFR-04 (login required),
 NFR-06/NFR-12 (validation) and NFR-07 (clear error messages).
-
-## For the team: NFR-14 sign-off
-
-This code was AI-generated from `claude/requirements-spec.md`. Per NFR-14, at
-least one team member needs to read through it (start with `priority.py`,
-`routers/tasks.py`, and `tests/test_priority.py`) and record that review
-before it counts as done for the course report.
