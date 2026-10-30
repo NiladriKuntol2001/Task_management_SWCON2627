@@ -4,7 +4,7 @@ A web app where students manage assignments, exams, and projects. The system
 scores each task's priority from its deadline, difficulty, and estimated time,
 classifies it (Low/Medium/High/Critical), and recommends what to work on next.
 
-Built to the exact spec in `claude/requirements-spec.md` (FR-01 through FR-21,
+Built to the exact spec (FR-01 through FR-21,
 NFR-01 through NFR-14, and the fixed priority formula in Section 3), plus an
 **admin panel** (v1.1) for managing every user and task, which is an addition
 beyond that spec — see [Admin panel](#admin-panel-v11).
